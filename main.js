@@ -52,6 +52,18 @@ function boot() {
   el.shootDealer.onclick = () => { if (!el.shootDealer.disabled) playerFire("dealer"); };
   $("startBtn").onclick = startGame;
   el.adrCancel.onclick = () => (el.adrOverlay.style.display = "none");
+
+  // Tab でルール一覧を開閉（Esc / 閉じるボタンでも閉じる）
+  const rulesOverlay = $("rulesOverlay");
+  const toggleRules = (show) => {
+    const s = show === undefined ? rulesOverlay.style.display === "none" : show;
+    rulesOverlay.style.display = s ? "flex" : "none";
+  };
+  $("rulesClose").onclick = () => toggleRules(false);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Tab") { e.preventDefault(); toggleRules(); }
+    else if (e.key === "Escape") { toggleRules(false); }
+  });
 }
 
 /* ============================================================
@@ -297,14 +309,20 @@ async function shoot(shooter, target) {
 
   if (G.player.hp <= 0 || G.dealer.hp <= 0) { return checkDeaths(); }
 
-  // 再装填（マガジンが空）: ディーラーが再び装填する
+  // 再装填（マガジンが空）: ①から仕切り直し → 必ずプレイヤーの手番から
   if (G.idx >= G.shells.length) {
     await wait(300);
-    log("マガジンが空。ディーラーが再装填する。", "info");
+    report("RELOAD", "info");
     loadShells();
     giveItems(ROUNDS[G.round].items, false);
+    G.player.cuffed = G.dealer.cuffed = false;
     syncAll();
     await stage.prepareRound(G.shells.slice());
+    G.turn = "player";
+    G.busy = false;
+    syncAll();
+    updateTurnUI();
+    return;
   }
 
   // ターン遷移

@@ -20,7 +20,7 @@
   </div>
 
   <div id="toast"></div>
-  <div class="hint">装填時に弾の内訳をよく覚えること。アイテムはクリックで使用。</div>
+  <div class="hint">装填時に弾の内訳をよく覚えること。アイテムはクリックで使用。<br><b>Tabキー</b>でルール表示。</div>
 
   <div class="actions">
     <button class="btn shoot-self" id="shootSelf">自分を撃つ</button>
@@ -46,6 +46,54 @@
       <p>相手のアイテムを1つ奪って即座に使用する。（アドレナリンは奪えない）</p>
       <div class="item-picker" id="adrPicker"></div>
       <button class="btn" id="adrCancel" style="margin-top:8px">キャンセル</button>
+    </div>
+  </div>
+
+  <!-- Rules (Tabで開閉) -->
+  <div class="overlay" id="rulesOverlay" style="display:none">
+    <div class="card rules-card">
+      <h2 style="color:var(--gold)">遊び方 / RULES</h2>
+
+      <div class="rules-sec">
+        <h3>目的</h3>
+        <p>全3ラウンドを勝ち抜く。<b>ディーラーの体力を0</b>にすれば次のラウンドへ。
+           <b>自分の体力が0</b>になると敗北。</p>
+      </div>
+
+      <div class="rules-sec">
+        <h3>弾（ショットガン）</h3>
+        <p>ラウンド開始時、<span class="live-c">実弾（赤い薬莢）</span>と
+           <span class="blank-c">空砲（グレーの薬莢）</span>がランダムに装填される。
+           <b>本数の内訳は見える／並び順は不明</b>。装填の数秒間でよく覚えること。</p>
+      </div>
+
+      <div class="rules-sec">
+        <h3>手番の流れ</h3>
+        <p>自分の番では、アイテムを好きなだけ使ってから発砲する。</p>
+        <ul>
+          <li><b>自分を撃つ</b> → <span class="blank-c">空砲</span>：ノーダメージ＆<b>もう一度自分の番</b>／
+              <span class="live-c">実弾</span>：体力−1で相手の番へ</li>
+          <li><b>相手を撃つ</b> → <span class="live-c">実弾</span>：相手−1／
+              <span class="blank-c">空砲</span>：ノーダメージ。どちらも相手の番へ</li>
+        </ul>
+      </div>
+
+      <div class="rules-sec">
+        <h3>アイテム（デスク上をクリックで使用・カーソルで説明）</h3>
+        <div class="rules-items">
+          <div class="ri"><span>🍺</span><div><b>ビール</b>現在の1発目を排莢（撃たずに1発捨てる）</div></div>
+          <div class="ri"><span>🚬</span><div><b>タバコ</b>体力を1回復</div></div>
+          <div class="ri"><span>🔍</span><div><b>虫メガネ</b>次の弾が実弾か空砲かを確認</div></div>
+          <div class="ri"><span>🪚</span><div><b>ノコギリ</b>次に撃つ弾のダメージを2倍（体力2のラウンドでは出ない）</div></div>
+          <div class="ri"><span>⛓️</span><div><b>手錠</b>相手の次の番を1回スキップ</div></div>
+          <div class="ri"><span>📞</span><div><b>携帯</b>未来のどれか1発の中身を知る</div></div>
+          <div class="ri"><span>💉</span><div><b>アドレナリン</b>相手のアイテムを1つ奪って即使用（アドレナリンは奪えない）</div></div>
+          <div class="ri"><span>🔄</span><div><b>インバータ</b>次の弾の実弾／空砲を反転</div></div>
+          <div class="ri"><span>💊</span><div><b>期限切れ薬</b>50%で体力+2 ／ 50%で体力−1</div></div>
+        </div>
+      </div>
+
+      <button class="btn" id="rulesClose" style="margin-top:14px">閉じる（Tab / Esc）</button>
     </div>
   </div>
 </div>
