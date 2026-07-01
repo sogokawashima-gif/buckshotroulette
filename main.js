@@ -53,7 +53,7 @@ function boot() {
   $("startBtn").onclick = startGame;
   el.adrCancel.onclick = () => (el.adrOverlay.style.display = "none");
 
-  // Esc でルール一覧を開閉（もう一度 Esc / 閉じるボタンでゲームに戻る）
+  // Tab でルール一覧を開閉（もう一度 Tab / 閉じるボタンでゲームに戻る。Esc でも閉じる）
   const rulesOverlay = $("rulesOverlay");
   const toggleRules = (show) => {
     const s = show === undefined ? rulesOverlay.style.display === "none" : show;
@@ -61,11 +61,14 @@ function boot() {
   };
   $("rulesClose").onclick = () => toggleRules(false);
   document.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape") return;
-    e.preventDefault();
-    // アドレナリンの選択中なら、それをキャンセル
-    if (el.adrOverlay.style.display === "flex") { el.adrOverlay.style.display = "none"; return; }
-    toggleRules();
+    if (e.key === "Tab") {
+      e.preventDefault();
+      toggleRules();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      if (el.adrOverlay.style.display === "flex") { el.adrOverlay.style.display = "none"; return; }
+      toggleRules(false);
+    }
   });
 }
 
