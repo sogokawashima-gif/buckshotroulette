@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Buckshot Roulette 3D</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <canvas id="scene"></canvas>
+  <div id="grain"></div>
+
+  <div class="loading" id="loading">読み込み中…</div>
+
+  <!-- HUD -->
+  <div class="hud-top">
+    <div class="round-badge" id="roundBadge">ROUND 1 / 3</div>
+    <div class="turn-indicator player" id="turnIndicator">YOUR TURN</div>
+  </div>
+
+  <div id="toast"></div>
+  <div class="hint">装填時に弾の内訳をよく覚えること。アイテムはクリックで使用。</div>
+
+  <div class="actions">
+    <button class="btn shoot-self" id="shootSelf">自分を撃つ</button>
+    <button class="btn shoot-dealer" id="shootDealer">ディーラーを撃つ</button>
+  </div>
+
+  <div id="itemTip"></div>
+
+  <!-- Start / end overlay -->
+  <div class="overlay" id="overlay">
+    <div class="card" id="overlayCard">
+      <h1>BUCKSHOT ROULETTE</h1>
+      <p>薄暗い地下室。仮面のディーラーとの命がけの取引。<br>
+         全3ラウンド、ショットガンとアイテムを操り生き残れ。</p>
+      <button class="btn" id="startBtn">取引を始める</button>
+    </div>
+  </div>
+
+  <!-- Adrenaline picker -->
+  <div class="overlay" id="adrOverlay" style="display:none">
+    <div class="card">
+      <h2 style="color:#ff8a8a">ADRENALINE</h2>
+      <p>相手のアイテムを1つ奪って即座に使用する。（アドレナリンは奪えない）</p>
+      <div class="item-picker" id="adrPicker"></div>
+      <button class="btn" id="adrCancel" style="margin-top:8px">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="main.js"></script>
+</body>
+</html>
