@@ -133,6 +133,8 @@ faceTexture.colorSpace = THREE.SRGBColorSpace;
 // 球のUVで u=0.25 が正面(+Z)にくるので、顔はキャンバスの x = W*0.25 を中心に描く
 const FX = FACE_W * 0.25;
 
+let goreMode = false; // 18禁モードON時にtrue（顔がボロボロになる）
+
 function drawFace(expr) {
   const g = fctx;
   g.fillStyle = expr === 'sick' ? '#cfd89a' : '#f2c18f'; // 毒のときは顔色が悪い
@@ -248,6 +250,38 @@ function drawFace(expr) {
     g.beginPath();
     g.ellipse(FX + s * 26, mouthY - 26, 26, 10, s * 0.18, 0, Math.PI * 2);
     g.fill();
+  }
+
+  // ---- 18禁モード：ボコボコにされた顔 ----
+  if (goreMode && expr !== 'happy') {
+    // 打撲のアザ
+    g.fillStyle = 'rgba(120,60,160,0.5)';
+    g.beginPath(); g.ellipse(FX - 92, eyeY - 26, 36, 26, 0.4, 0, Math.PI * 2); g.fill();
+    g.fillStyle = 'rgba(60,80,150,0.45)';
+    g.beginPath(); g.ellipse(FX + 82, mouthY - 62, 28, 20, -0.3, 0, Math.PI * 2); g.fill();
+    // おでこの切り傷
+    g.strokeStyle = '#8a1420';
+    g.lineWidth = 6;
+    g.beginPath();
+    g.moveTo(FX + 58, eyeY - 92); g.lineTo(FX + 112, eyeY - 60);
+    g.moveTo(FX + 70, eyeY - 96); g.lineTo(FX + 88, eyeY - 66);
+    g.stroke();
+    // 鼻血（2すじ）
+    g.fillStyle = '#b01525';
+    g.fillRect(FX - 13, FACE_H * 0.55, 9, 64);
+    g.fillRect(FX + 7, FACE_H * 0.55, 7, 44);
+    // 口元から垂れる血
+    g.beginPath(); g.ellipse(FX - 32, mouthY + 42, 13, 28, 0.5, 0, Math.PI * 2); g.fill();
+    // 痛がっているときは血が飛び散る
+    if (expr === 'ouch' || expr === 'shock') {
+      g.fillStyle = 'rgba(160,20,35,0.85)';
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2;
+        g.beginPath();
+        g.ellipse(FX + Math.cos(a) * 152, eyeY + Math.sin(a) * 118, 8 + (i % 3) * 4, 5 + (i % 2) * 4, a, 0, Math.PI * 2);
+        g.fill();
+      }
+    }
   }
 
   faceTexture.needsUpdate = true;
@@ -368,6 +402,7 @@ const ojisanMats = [];
 }
 
 const pend = { vx: 0, vz: 0, spinV: 0 };
+const ropeSpring = { stretch: 0, v: 0 }; // ロープのビヨンと伸びる動き
 let squash = 0;
 let faceTimer = 0;
 let currentFace = 'normal';
@@ -458,7 +493,28 @@ function makeImpactTexture() {
 }
 const impactTex = makeImpactTexture();
 
+// 血しぶき・血だまり用の不定形ブロブ
+function makeBlobTexture(color, blobs) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = color;
+  for (let i = 0; i < blobs; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const d = Math.random() * 34;
+    g.beginPath();
+    g.ellipse(64 + Math.cos(a) * d, 64 + Math.sin(a) * d, 12 + Math.random() * 22, 10 + Math.random() * 18, a, 0, Math.PI * 2);
+    g.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+const bloodTex = makeBlobTexture('#a0101f', 6);
+const stainTex = makeBlobTexture('rgba(110,10,22,0.9)', 9);
+
 const glowTexGold = makeGlowTexture('rgba(255,240,170,0.95)', 'rgba(255,180,40,0)');
+const glowTexPink = makeGlowTexture('rgba(255,170,220,0.95)', 'rgba(255,60,140,0)');
 const glowTexBlue = makeGlowTexture('rgba(170,220,255,0.95)', 'rgba(60,140,255,0)');
 const glowTexGreen = makeGlowTexture('rgba(190,255,150,0.9)', 'rgba(60,180,40,0)');
 const glowTexOrange = makeGlowTexture('rgba(255,220,150,1)', 'rgba(255,90,20,0)');
@@ -483,6 +539,16 @@ const WEAPONS = [
 ];
 const weaponById = id => WEAPONS.find(w => w.id === id);
 
+// ---------- ペット（武器と重複OK・自動攻撃・無限強化） ----------
+const PETS = {
+  dog: { name: 'いぬ', icon: '🐕', base: 25, rate: 1.0, price: 8000, upBase: 1200, desc: '自動でかみつく忠犬' },
+  cat: { name: 'ねこ', icon: '🐈', base: 18, rate: 1.4, price: 5000, upBase: 750, desc: '自動でひっかく気まぐれ猫' },
+};
+const PET_IDS = ['dog', 'cat'];
+
+// ---------- 18禁モード ----------
+const R18_PRICE = 1e12; // 1兆
+
 // ---------- ゲーム状態 ----------
 const state = {
   started: false,
@@ -495,6 +561,9 @@ const state = {
   equipped: 'wand',
   wandUp: 0, // ハートの杖の強化回数（無限）
   weapons: {}, // id -> 'secret' | 'unlocked' | 'owned'
+  pets: { dog: { owned: false, up: 0 }, cat: { owned: false, up: 0 } },
+  r18Owned: false,
+  r18On: false,
   cooldown: 0,
   swinging: false,
   swingT: 0,
@@ -526,6 +595,17 @@ function weaponDmg(id) {
   const base = id === 'wand' ? wandDmg() : weaponById(id).dmg;
   return Math.max(1, Math.round(base * dmgMult()));
 }
+// ペット（無限強化・杖と同じ成長式）
+const petDmg = id => {
+  const n = state.pets[id].up;
+  return Math.max(1, Math.round(PETS[id].base * (1 + 2 * n) * Math.pow(1.07, n) * dmgMult()));
+};
+const petUpCost = id => Math.ceil(PETS[id].upBase * Math.pow(1.26, state.pets[id].up));
+// 18禁モードの見た目（顔のグロ化）を反映
+function applyR18Visual() {
+  goreMode = state.r18On;
+  drawFace(currentFace);
+}
 function weaponRate(id) {
   return id === 'wand' ? wandRate() : weaponById(id).rate;
 }
@@ -545,6 +625,7 @@ function save() {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       score: state.score, money: state.money, level: state.level, xp: state.xp,
       wandUp: state.wandUp, weapons: state.weapons, equipped: state.equipped,
+      pets: state.pets, r18Owned: state.r18Owned, r18On: state.r18On,
     }));
   } catch (e) { /* ストレージ不可でもゲームは続行 */ }
 }
@@ -560,6 +641,11 @@ function load() {
     if (d.weapons) for (const w of WEAPONS) { if (d.weapons[w.id]) state.weapons[w.id] = d.weapons[w.id]; }
     state.weapons.wand = 'owned';
     if (d.equipped && state.weapons[d.equipped] === 'owned') state.equipped = d.equipped;
+    if (d.pets) for (const id of PET_IDS) {
+      if (d.pets[id]) state.pets[id] = { owned: !!d.pets[id].owned, up: d.pets[id].up || 0 };
+    }
+    state.r18Owned = !!d.r18Owned;
+    state.r18On = !!d.r18On && state.r18Owned;
   } catch (e) { /* 壊れたセーブは無視 */ }
 }
 load();
@@ -584,7 +670,30 @@ const equipCtx = {
   sparkles: null,    // 杖のキラキラ
   orbiters: [],      // 杖の星
   auraLight: null,   // 杖のオーラ
+  tipLocal: new THREE.Vector3(0, 0.9, 0), // ビームの発射位置（杖の先端）
 };
+
+// ---- ハートの杖のビーム（18禁モードで解禁・長押し可能） ----
+const beamGroup = new THREE.Group();
+beamGroup.visible = false;
+scene.add(beamGroup);
+{
+  const core = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.035, 0.035, 1, 10, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, depthWrite: false })
+  );
+  const outer = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.09, 0.09, 1, 10, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0xff4f9e, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false })
+  );
+  beamGroup.add(core, outer);
+}
+let beamTimer = 0;
+const _beamStart = new THREE.Vector3();
+const _beamEnd = new THREE.Vector3();
+const _beamDir = new THREE.Vector3();
+const _yAxis = new THREE.Vector3(0, 1, 0);
+const beamActive = () => state.r18On && state.equipped === 'wand';
 
 function clearWeaponModel() {
   while (weaponRoot.children.length) {
@@ -733,6 +842,7 @@ function buildWand(tier) {
 
   equipCtx.basePos.set(0.62, -0.62, -1.35);
   equipCtx.baseRot.set(0.35, -0.25, -0.35);
+  equipCtx.tipLocal.set(0, topY, 0); // ビームはハートから出る
 }
 
 // --- 水鉄砲 ---
@@ -972,6 +1082,161 @@ function addMuzzleFlash(group, pos, tex, size) {
   equipCtx.flash = flash;
 }
 
+// ---------- ペットの3Dモデルと自動攻撃 ----------
+const petCtx = { dog: null, cat: null };
+
+function buildPetModel(id) {
+  const g = new THREE.Group();
+  if (id === 'dog') {
+    const fur = new THREE.MeshStandardMaterial({ color: 0xd99a5b, roughness: 0.8 });
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 12), fur);
+    body.scale.set(1.1, 0.85, 1.6);
+    body.position.y = 0.28;
+    body.castShadow = true;
+    g.add(body);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 16, 12), fur);
+    head.position.set(0, 0.48, 0.3);
+    g.add(head);
+    const snout = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.08, 0.12), new THREE.MeshStandardMaterial({ color: 0xf5e8d5, roughness: 0.8 }));
+    snout.position.set(0, 0.44, 0.43);
+    g.add(snout);
+    const noseTip = new THREE.Mesh(new THREE.SphereGeometry(0.026, 8, 6), new THREE.MeshStandardMaterial({ color: 0x222222 }));
+    noseTip.position.set(0, 0.46, 0.5);
+    g.add(noseTip);
+    for (const s of [-1, 1]) {
+      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.11, 8), fur);
+      ear.position.set(s * 0.09, 0.63, 0.26);
+      g.add(ear);
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 6), new THREE.MeshStandardMaterial({ color: 0x1a1a1a }));
+      eye.position.set(s * 0.06, 0.52, 0.43);
+      g.add(eye);
+    }
+    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.22, 8), fur);
+    tail.position.set(0, 0.44, -0.32);
+    tail.rotation.x = -0.9;
+    tail.name = 'tail';
+    g.add(tail);
+    for (const [sx, sz] of [[-1, 1], [1, 1], [-1, -1], [1, -1]]) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.18, 8), fur);
+      leg.position.set(sx * 0.1, 0.09, sz * 0.2);
+      g.add(leg);
+    }
+    g.position.set(-1.7, 0, 0.9);
+  } else {
+    const fur = new THREE.MeshStandardMaterial({ color: 0x9aa0ac, roughness: 0.8 });
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.17, 16, 12), fur);
+    body.scale.set(1, 0.85, 1.55);
+    body.position.y = 0.24;
+    body.castShadow = true;
+    g.add(body);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 12), fur);
+    head.position.set(0, 0.42, 0.26);
+    g.add(head);
+    for (const s of [-1, 1]) {
+      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.12, 4), fur);
+      ear.position.set(s * 0.08, 0.56, 0.24);
+      ear.rotation.y = Math.PI / 4;
+      g.add(ear);
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 6), new THREE.MeshStandardMaterial({ color: 0x2fa050 }));
+      eye.position.set(s * 0.05, 0.45, 0.37);
+      g.add(eye);
+    }
+    const noseTip = new THREE.Mesh(new THREE.SphereGeometry(0.018, 8, 6), new THREE.MeshStandardMaterial({ color: 0xd06a7a }));
+    noseTip.position.set(0, 0.41, 0.39);
+    g.add(noseTip);
+    const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.014, 0.36, 8), fur);
+    tail.position.set(0.06, 0.42, -0.3);
+    tail.rotation.x = -0.7;
+    tail.rotation.z = -0.3;
+    tail.name = 'tail';
+    g.add(tail);
+    for (const [sx, sz] of [[-1, 1], [1, 1], [-1, -1], [1, -1]]) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.16, 8), fur);
+      leg.position.set(sx * 0.08, 0.08, sz * 0.17);
+      g.add(leg);
+    }
+    g.position.set(1.7, 0, 0.7);
+  }
+  g.lookAt(0, 0.3, 0);
+  scene.add(g);
+  return g;
+}
+
+function refreshPets() {
+  for (const id of PET_IDS) {
+    if (state.pets[id].owned && !petCtx[id]) {
+      petCtx[id] = {
+        group: buildPetModel(id),
+        rest: null,
+        timer: 0.5 + Math.random(),
+        anim: -1,
+        hitDone: false,
+        target: new THREE.Vector3(),
+        phase: Math.random() * 6,
+      };
+      petCtx[id].rest = petCtx[id].group.position.clone();
+    }
+  }
+}
+
+const _petPos = new THREE.Vector3();
+function petHit(id) {
+  const dmgV = petDmg(id);
+  gainFromDamage(dmgV, { useCombo: false });
+  ojisan.getWorldPosition(_petPos);
+  _petPos.y -= 1.6;
+  _petPos.x += (Math.random() - 0.5) * 0.4;
+  spawnDamageNumber(_petPos, dmgV, {});
+  spawnBurst(_petPos, 3, false);
+  if (state.r18On) spawnBlood(_petPos, 4);
+  squash = Math.max(squash, 0.5);
+  pend.vz += (Math.random() - 0.5) * 0.8;
+  pend.vx -= 0.3;
+  if (Math.random() < 0.35) playWeaponSound(id === 'dog' ? 'bark' : 'meow', 0);
+  if (Math.random() < 0.3) setFace('ouch', 0.3);
+  updateHUD();
+}
+
+function updatePets(dt) {
+  for (const id of PET_IDS) {
+    const p = petCtx[id];
+    if (!p || !state.pets[id].owned) continue;
+    const tail = p.group.getObjectByName('tail');
+    if (tail) tail.rotation.z = Math.sin(state.time * 6 + p.phase) * 0.3 - (id === 'cat' ? 0.3 : 0);
+    if (!state.started) continue;
+    if (p.anim < 0) {
+      // 待機：ぴょこぴょこ
+      p.group.position.y = p.rest.y + Math.abs(Math.sin(state.time * 3 + p.phase)) * 0.04;
+      p.timer -= dt;
+      if (p.timer <= 0) {
+        p.anim = 0;
+        p.hitDone = false;
+        ojisan.getWorldPosition(p.target);
+        p.target.y -= 2.0;
+        p.target.z += 0.3;
+      }
+    } else {
+      // 飛びかかり攻撃
+      p.anim += dt / 0.5;
+      if (p.anim >= 1) {
+        p.anim = -1;
+        p.timer = 1 / PETS[id].rate;
+        p.group.position.copy(p.rest);
+        p.group.lookAt(0, 0.3, 0);
+      } else {
+        const k = p.anim < 0.5 ? p.anim * 2 : (1 - p.anim) * 2;
+        p.group.position.lerpVectors(p.rest, p.target, k);
+        p.group.position.y += Math.sin(k * Math.PI) * 0.35 + k * 0;
+        p.group.rotation.z = Math.sin(p.anim * Math.PI * 2) * 0.3;
+        if (!p.hitDone && p.anim >= 0.5) {
+          p.hitDone = true;
+          petHit(id);
+        }
+      }
+    }
+  }
+}
+
 function buildEquipped() {
   clearWeaponModel();
   const id = state.equipped;
@@ -992,6 +1257,8 @@ function buildEquipped() {
   weaponRoot.rotation.copy(equipCtx.baseRot);
 }
 buildEquipped();
+refreshPets();
+applyR18Visual();
 
 // ---------- HUD ----------
 const el = {
@@ -1013,14 +1280,19 @@ const el = {
   shopMoney: document.getElementById('shop-money'),
 };
 
+// 18禁モード用の赤いビネット（たたくたび画面端が赤く光る）
+const goreVignette = document.createElement('div');
+goreVignette.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:5;opacity:0;background:radial-gradient(ellipse at center, rgba(0,0,0,0) 52%, rgba(160,10,25,0.6) 100%);';
+document.body.appendChild(goreVignette);
+
 function updateHUD() {
   el.score.textContent = fmt(state.score);
   el.money.textContent = fmt(state.money);
   el.level.textContent = `Lv.${state.level.toLocaleString()}`;
   el.xpFill.style.width = `${Math.min(100, (state.xp / xpNeed(state.level)) * 100)}%`;
-  el.weapon.textContent = weaponById(state.equipped).name + (state.equipped === 'wand' && state.wandUp > 0 ? ` +${state.wandUp}` : '');
+  el.weapon.textContent = weaponById(state.equipped).name + (state.equipped === 'wand' && state.wandUp > 0 ? ` +${state.wandUp}` : '') + (beamActive() ? '🔞ビーム' : '');
   el.atk.textContent = fmt(weaponDmg(state.equipped));
-  el.spd.textContent = weaponRate(state.equipped).toFixed(1);
+  el.spd.textContent = (beamActive() ? Math.max(10, wandRate()) : weaponRate(state.equipped)).toFixed(1);
   el.shopMoney.textContent = '💰' + fmt(state.money);
 }
 updateHUD();
@@ -1099,6 +1371,20 @@ function playWeaponSound(sound, combo) {
       break;
     case 'tick':
       toneDrop(600, 350, 0.05, 0.05, 'triangle');
+      break;
+    case 'squish':
+      noiseBurst(0.12, 'lowpass', 380, 0.28, 110);
+      toneDrop(150, 45, 0.12, 0.22);
+      break;
+    case 'beam':
+      toneDrop(950 + Math.random() * 250, 480, 0.07, 0.08, 'sawtooth');
+      break;
+    case 'bark':
+      toneDrop(480, 170, 0.09, 0.22, 'square');
+      noiseBurst(0.04, 'bandpass', 800, 0.12);
+      break;
+    case 'meow':
+      toneDrop(850, 520, 0.2, 0.1, 'triangle');
       break;
   }
 }
@@ -1195,6 +1481,56 @@ function spawnBurst(worldPos, count, big, style) {
   }
 }
 
+// ---- 血しぶきと床の血だまり（18禁モード） ----
+const stains = [];
+const stainGeo = new THREE.PlaneGeometry(1, 1);
+function addStain(x, z) {
+  if (stains.length >= 50) {
+    const old = stains.shift();
+    scene.remove(old.m);
+    old.m.material.dispose();
+  }
+  const m = new THREE.Mesh(stainGeo, new THREE.MeshBasicMaterial({
+    map: stainTex, transparent: true, opacity: 0.8, depthWrite: false,
+  }));
+  m.rotation.x = -Math.PI / 2;
+  m.rotation.z = Math.random() * Math.PI * 2;
+  const s = 0.3 + Math.random() * 0.55;
+  m.scale.set(s, s, 1);
+  m.position.set(x + (Math.random() - 0.5) * 0.3, 0.012 + Math.random() * 0.004, z + (Math.random() - 0.5) * 0.3);
+  scene.add(m);
+  stains.push({ m, life: 30 });
+}
+function updateStains(dt) {
+  for (let i = stains.length - 1; i >= 0; i--) {
+    const s = stains[i];
+    s.life -= dt;
+    s.m.material.opacity = Math.min(0.8, s.life / 8);
+    if (s.life <= 0) {
+      scene.remove(s.m);
+      s.m.material.dispose();
+      stains.splice(i, 1);
+    }
+  }
+}
+
+function spawnBlood(worldPos, count) {
+  if (particles.length > MAX_PARTICLES) return;
+  for (let i = 0; i < count; i++) {
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: bloodTex, transparent: true, depthWrite: false }));
+    spr.scale.setScalar(0.1 + Math.random() * 0.18);
+    spr.position.copy(worldPos);
+    spr.position.x += (Math.random() - 0.5) * 0.5;
+    spr.position.y += (Math.random() - 0.5) * 0.5;
+    scene.add(spr);
+    particles.push({
+      obj: spr,
+      vel: new THREE.Vector3((Math.random() - 0.5) * 5, Math.random() * 3.5 + 0.5, (Math.random() - 0.5) * 3 + 1.2),
+      life: 1, decay: 0.45, grav: 13, isBlood: true,
+    });
+  }
+}
+
 // たたいた瞬間のインパクト閃光（一瞬で拡大して消える）
 function spawnImpact(worldPos, big) {
   const spr = new THREE.Sprite(new THREE.SpriteMaterial({
@@ -1258,6 +1594,11 @@ function updateParticles(dt) {
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
     p.life -= p.decay * dt;
+    // 血しぶきは床に落ちたら血だまりになる
+    if (p.isBlood && p.obj.position.y <= 0.04) {
+      if (Math.random() < 0.6) addStain(p.obj.position.x, p.obj.position.z);
+      p.life = 0;
+    }
     if (p.life <= 0 || p.obj.position.y < -0.5) {
       scene.remove(p.obj);
       p.obj.material.map?.dispose?.();
@@ -1302,6 +1643,7 @@ function applyHit(opts = {}) {
   state.combo += 1;
   state.comboTimer = 2.0;
   const gained = gainFromDamage(weaponDmg(state.equipped), { useCombo: true });
+  ropeSpring.v += 0.5 + Math.random() * 0.5; // ロープがビヨンと伸びる
 
   // おじさんのリアクション
   if (state.equipped === 'grenade') {
@@ -1325,7 +1667,7 @@ function applyHit(opts = {}) {
   ojisan.getWorldPosition(targetPos);
   targetPos.y += 0.2;
   targetPos.z += 0.45;
-  const style = w.burst;
+  const style = opts.beam ? 'beam' : w.burst;
   const big = state.combo >= 10 || state.equipped === 'grenade';
   spawnImpact(targetPos, big);
   spawnBurst(targetPos, Math.min(6 + state.combo, 14), big, style);
@@ -1336,7 +1678,13 @@ function applyHit(opts = {}) {
   state.shake = state.equipped === 'grenade'
     ? 0.55
     : Math.min(0.5, 0.18 + state.combo * 0.008);
-  playWeaponSound(w.sound, state.combo);
+  playWeaponSound(opts.beam ? 'beam' : w.sound, state.combo);
+
+  // 18禁モード：血しぶき＆生々しい打撃音
+  if (state.r18On) {
+    spawnBlood(targetPos, Math.min(5 + Math.floor(state.combo / 2), 12));
+    playWeaponSound('squish', 0);
+  }
 
   // マズルフラッシュ
   if (equipCtx.flash) equipCtx.flashTimer = 0.08;
@@ -1403,6 +1751,14 @@ function weaponReady() {
 
 function performAttack() {
   const w = weaponById(state.equipped);
+  // 18禁モードのハートの杖はビーム化：秒間10発以上・長押し可能
+  if (beamActive()) {
+    const rate = Math.max(10, wandRate());
+    state.cooldown = 1 / rate;
+    beamTimer = 0.14;
+    applyHit({ beam: true });
+    return;
+  }
   const rate = weaponRate(state.equipped);
   state.cooldown = 1 / rate;
   state.swinging = true;
@@ -1572,9 +1928,106 @@ function shopRow(w) {
   return row;
 }
 
+// ペットの行（購入→無限強化）
+function petRow(id) {
+  const p = PETS[id];
+  const owned = state.pets[id].owned;
+  const row = document.createElement('div');
+  row.className = 'shop-item';
+  const up = state.pets[id].up;
+  const name = owned && up > 0 ? `${p.name} +${up}` : p.name;
+  row.innerHTML = `
+    <div class="shop-icon">${p.icon}</div>
+    <div class="shop-info">
+      <div class="shop-name">${name}</div>
+      <div class="shop-stats">攻撃力 ${fmt(petDmg(id))} ・ 秒間${p.rate}回 自動攻撃</div>
+      <div class="shop-desc">${p.desc}${owned ? '（はたらき中🐾）' : ''}</div>
+    </div>`;
+  const btn = document.createElement('button');
+  if (!owned) {
+    btn.className = 'shop-action buy';
+    btn.innerHTML = `購入<span class="cost">💰${fmt(p.price)}</span>`;
+    btn.disabled = state.money < p.price;
+    btn.addEventListener('click', () => {
+      if (state.money < p.price) return;
+      state.money -= p.price;
+      state.pets[id].owned = true;
+      refreshPets();
+      playCoin();
+      save(); renderShop(); updateHUD();
+    });
+  } else {
+    row.classList.add('equipped');
+    const cost = petUpCost(id);
+    btn.className = 'shop-action';
+    btn.innerHTML = `∞ 強化<span class="cost">💰${fmt(cost)}</span>`;
+    btn.disabled = state.money < cost;
+    btn.addEventListener('click', () => {
+      if (state.money < petUpCost(id)) return;
+      state.money -= petUpCost(id);
+      state.pets[id].up += 1;
+      playCoin();
+      save(); renderShop(); updateHUD();
+    });
+  }
+  row.appendChild(btn);
+  return row;
+}
+
+// 18禁モードの行（1兆で購入・購入後はON/OFF切り替え）
+function r18Row() {
+  const row = document.createElement('div');
+  row.className = 'shop-item';
+  row.innerHTML = `
+    <div class="shop-icon">🔞</div>
+    <div class="shop-info">
+      <div class="shop-name">18禁モード</div>
+      <div class="shop-stats">血しぶき解禁 ＆ ハートの杖がビーム化（長押しで秒間10発〜）</div>
+      <div class="shop-desc">${state.r18Owned ? 'ボタンでON/OFFを切り替えられる' : 'かなりグロテスクな表現が解禁される。心して買え'}</div>
+    </div>`;
+  const btn = document.createElement('button');
+  if (!state.r18Owned) {
+    btn.className = 'shop-action buy';
+    btn.innerHTML = `購入<span class="cost">💰${fmt(R18_PRICE)}</span>`;
+    btn.disabled = state.money < R18_PRICE;
+    btn.addEventListener('click', () => {
+      if (state.money < R18_PRICE) return;
+      if (!confirm('あなたは18歳以上ですか？\n（血しぶきなどグロテスクな表現が解禁されます）')) return;
+      state.money -= R18_PRICE;
+      state.r18Owned = true;
+      state.r18On = true;
+      applyR18Visual();
+      playCoin();
+      save(); renderShop(); updateHUD();
+    });
+  } else {
+    if (state.r18On) row.classList.add('equipped');
+    btn.className = 'shop-action equip';
+    btn.textContent = state.r18On ? 'ON → OFFにする' : 'OFF → ONにする';
+    btn.addEventListener('click', () => {
+      state.r18On = !state.r18On;
+      applyR18Visual();
+      save(); renderShop(); updateHUD();
+    });
+  }
+  row.appendChild(btn);
+  return row;
+}
+
 function renderShop() {
   el.shopList.innerHTML = '';
+  const header = txt => {
+    const h = document.createElement('div');
+    h.style.cssText = 'font-weight:900;color:#ffb3d0;font-size:13px;letter-spacing:2px;margin:10px 4px 6px;';
+    h.textContent = txt;
+    el.shopList.appendChild(h);
+  };
+  header('🗡 武器');
   for (const w of WEAPONS) el.shopList.appendChild(shopRow(w));
+  header('🐾 ペット（武器と併用OK・自動攻撃）');
+  for (const id of PET_IDS) el.shopList.appendChild(petRow(id));
+  header('🔞 スペシャル');
+  el.shopList.appendChild(r18Row());
   el.shopMoney.textContent = '💰' + fmt(state.money);
 }
 
@@ -1604,15 +2057,25 @@ function animate() {
   state.hitStop = Math.max(0, state.hitStop - dt);
   const eff = state.hitStop > 0 ? dt * 0.1 : dt;
 
-  // --- 振り子の物理 ---
+  // --- 振り子の物理（本物のピニャータ風：振れ幅制限＆ロープの張り） ---
   const g = 9.8, L = 2.4, damp = 1.4;
   pend.vx += (-(g / L) * Math.sin(anchor.rotation.x) - damp * pend.vx) * eff;
   pend.vz += (-(g / L) * Math.sin(anchor.rotation.z) - damp * pend.vz) * eff;
+  // どんなに連打しても速度と振れ幅に上限（画面外に行かない）
+  pend.vx = THREE.MathUtils.clamp(pend.vx, -5, 5);
+  pend.vz = THREE.MathUtils.clamp(pend.vz, -5, 5);
   anchor.rotation.x += pend.vx * eff;
   anchor.rotation.z += pend.vz * eff;
+  const MAX_SWING = 0.9;
+  if (Math.abs(anchor.rotation.x) > MAX_SWING) { anchor.rotation.x = Math.sign(anchor.rotation.x) * MAX_SWING; pend.vx *= -0.35; }
+  if (Math.abs(anchor.rotation.z) > MAX_SWING) { anchor.rotation.z = Math.sign(anchor.rotation.z) * MAX_SWING; pend.vz *= -0.35; }
   // スピンは常に正面へ戻す力を強めにかけ、顔が見えなくならないようクランプ
   pend.spinV += (-ojisan.rotation.y * 12 - pend.spinV * 3) * eff;
   ojisan.rotation.y = THREE.MathUtils.clamp(ojisan.rotation.y + pend.spinV * eff, -0.5, 0.5);
+  // たたかれるとロープがビヨンと伸びて跳ねる
+  ropeSpring.v += (-ropeSpring.stretch * 70 - ropeSpring.v * 6) * eff;
+  ropeSpring.stretch = THREE.MathUtils.clamp(ropeSpring.stretch + ropeSpring.v * eff, -0.15, 0.3);
+  ojisan.position.y = -ROPE_LEN - ropeSpring.stretch;
 
   squash = Math.max(0, squash - eff * 5);
   const sq = Math.sin(squash * Math.PI) * 0.24;
@@ -1655,10 +2118,29 @@ function animate() {
     }
   }
 
-  // --- 長押し連射（チェンソー・銃） ---
+  // --- 長押し連射（チェンソー・銃・18禁ビーム） ---
   state.cooldown = Math.max(0, state.cooldown - dt);
   const w = weaponById(state.equipped);
-  if (state.holding && w.hold && weaponReady()) performAttack();
+  if (state.holding && (w.hold || beamActive()) && weaponReady()) performAttack();
+
+  // --- ビームの見た目（杖の先端→おじさん） ---
+  beamTimer = Math.max(0, beamTimer - dt);
+  if (beamTimer > 0 && state.equipped === 'wand') {
+    weaponRoot.updateWorldMatrix(true, false);
+    _beamStart.copy(equipCtx.tipLocal).applyMatrix4(weaponRoot.matrixWorld);
+    ojisan.getWorldPosition(_beamEnd);
+    _beamEnd.y += 0.1;
+    _beamEnd.z += 0.3;
+    _beamDir.copy(_beamEnd).sub(_beamStart);
+    const len = _beamDir.length();
+    beamGroup.position.copy(_beamStart).add(_beamEnd).multiplyScalar(0.5);
+    beamGroup.quaternion.setFromUnitVectors(_yAxis, _beamDir.normalize());
+    const pulse = 1 + Math.sin(state.time * 42) * 0.2;
+    beamGroup.scale.set(pulse, len, pulse);
+    beamGroup.visible = true;
+  } else {
+    beamGroup.visible = false;
+  }
 
   // チェンソーの持続音
   if (state.equipped === 'chainsaw' && state.holding && state.started) startSawSound();
@@ -1699,6 +2181,10 @@ function animate() {
       weaponRoot.position.copy(bp);
       weaponRoot.rotation.copy(br);
     }
+  } else if (beamTimer > 0 && state.equipped === 'wand') {
+    // ビーム発射中はおじさんに杖を向けて構える
+    weaponRoot.rotation.set(br.x - 1.15 + (Math.random() - 0.5) * 0.04, br.y, br.z + 0.2);
+    weaponRoot.position.set(bp.x, bp.y + 0.05, bp.z - 0.25);
   } else {
     weaponRoot.position.set(bp.x, bp.y + Math.sin(state.time * 2.2) * 0.012, bp.z);
     weaponRoot.rotation.set(br.x, br.y, br.z + Math.sin(state.time * 1.7) * 0.02);
@@ -1757,6 +2243,13 @@ function animate() {
     b.position.y += Math.sin(state.time * 1.2 + b.userData.phase) * 0.0016;
     b.rotation.z = Math.sin(state.time * 0.8 + b.userData.phase) * 0.06;
   }
+
+  // --- ペットの自動攻撃 ---
+  updatePets(dt);
+
+  // --- 血だまりのフェード＆赤いビネット ---
+  updateStains(dt);
+  goreVignette.style.opacity = state.r18On ? (state.flash * 0.85).toFixed(2) : '0';
 
   updateParticles(dt);
   renderer.render(scene, camera);
