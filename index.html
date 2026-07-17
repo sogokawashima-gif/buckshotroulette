@@ -2,102 +2,214 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Buckshot Roulette 3D</title>
-<link rel="stylesheet" href="style.css">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>おじさんピニャータ 〜ハートの杖でしばきまくれ！〜</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1030; font-family: "Hiragino Maru Gothic ProN", "Yu Gothic UI", "Meiryo", sans-serif; }
+  #game-canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+
+  /* ===== HUD ===== */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+
+  #score-panel {
+    position: absolute; top: 14px; left: 14px;
+    background: rgba(20, 8, 40, .72); border: 2px solid #ff6fa5; border-radius: 16px;
+    padding: 10px 18px; color: #fff; min-width: 250px;
+    box-shadow: 0 4px 20px rgba(255, 100, 160, .35);
+  }
+  #score-label { font-size: 12px; color: #ffb3d0; letter-spacing: 2px; }
+  #score-value { font-size: 30px; font-weight: 800; color: #ffe14d; text-shadow: 0 2px 0 #b8860b; line-height: 1.1; font-variant-numeric: tabular-nums; }
+
+  #money-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+  #money-value { font-size: 22px; font-weight: 800; color: #7dffb0; text-shadow: 0 1px 0 #1a7a44; font-variant-numeric: tabular-nums; }
+
+  #level-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  #level-badge {
+    background: linear-gradient(180deg, #ff9ecb, #ff4f8b); border-radius: 10px;
+    padding: 3px 10px; font-size: 15px; font-weight: 800; color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,.35); white-space: nowrap;
+  }
+  #xp-bar { flex: 1; height: 14px; background: rgba(255,255,255,.15); border-radius: 7px; overflow: hidden; border: 1px solid rgba(255,255,255,.3); }
+  #xp-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #7dffb0, #2fe07a); transition: width .1s ease-out; border-radius: 7px; }
+
+  #stats-row { margin-top: 7px; font-size: 12.5px; color: #e8d8ff; line-height: 1.7; }
+  #stats-row b { color: #fff; font-variant-numeric: tabular-nums; }
+
+  #shop-btn {
+    position: absolute; top: 190px; left: 14px; pointer-events: auto;
+    font-size: 17px; font-weight: 800; color: #4a2408;
+    background: linear-gradient(180deg, #ffe9a0, #ffc93a);
+    border: 2px solid #fff; border-radius: 14px; padding: 9px 22px;
+    box-shadow: 0 4px 0 #b8860b, 0 6px 16px rgba(255,200,60,.4); cursor: pointer;
+  }
+  #shop-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #b8860b; }
+
+  /* combo */
+  #combo-box {
+    position: absolute; top: 18px; right: 20px; text-align: right;
+    color: #fff; opacity: 0; transition: opacity .25s;
+  }
+  #combo-box.show { opacity: 1; }
+  #combo-num { font-size: 46px; font-weight: 900; color: #ff8fc0; text-shadow: 0 0 14px #ff4f8b, 0 3px 0 #a02458; line-height: 1; }
+  #combo-label { font-size: 14px; letter-spacing: 4px; color: #ffd7e8; }
+
+  /* poison indicator */
+  #poison-ind {
+    position: absolute; top: 110px; right: 20px; display: none;
+    background: rgba(20, 50, 15, .8); border: 2px solid #6fe04a; border-radius: 12px;
+    padding: 6px 14px; color: #b6ff9a; font-size: 15px; font-weight: 700;
+    text-shadow: 0 0 8px #3fa020;
+  }
+  #poison-ind.show { display: block; }
+
+  /* level up banner */
+  #levelup-banner {
+    position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%) scale(.5);
+    font-size: 50px; font-weight: 900; color: #ffe14d;
+    text-shadow: 0 0 24px #ff9500, 0 4px 0 #c07800, 2px 2px 0 #7a4a00;
+    opacity: 0; pointer-events: none; white-space: nowrap;
+  }
+  #levelup-banner.pop { animation: levelup-pop 1.5s ease-out forwards; }
+  @keyframes levelup-pop {
+    0%   { opacity: 0; transform: translate(-50%, -50%) scale(.4) rotate(-6deg); }
+    15%  { opacity: 1; transform: translate(-50%, -50%) scale(1.15) rotate(2deg); }
+    30%  { transform: translate(-50%, -50%) scale(1.0) rotate(0deg); }
+    75%  { opacity: 1; }
+    100% { opacity: 0; transform: translate(-50%, -62%) scale(1.05); }
+  }
+  #levelup-sub {
+    position: absolute; top: 39%; left: 50%; transform: translate(-50%, -50%);
+    font-size: 17px; font-weight: 700; color: #fff; text-shadow: 0 2px 6px rgba(0,0,0,.6);
+    opacity: 0; pointer-events: none; text-align: center; line-height: 1.6;
+  }
+  #levelup-sub.pop { animation: sub-pop 1.9s ease-out forwards; }
+  @keyframes sub-pop {
+    0% { opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; }
+  }
+
+  /* ===== ショップ ===== */
+  #shop-panel {
+    position: absolute; top: 0; right: 0; height: 100%; width: min(400px, 92vw);
+    background: rgba(24, 10, 46, .96); border-left: 3px solid #ffc93a;
+    transform: translateX(105%); transition: transform .25s ease;
+    pointer-events: auto; display: flex; flex-direction: column; z-index: 15;
+    box-shadow: -8px 0 30px rgba(0,0,0,.5);
+  }
+  #shop-panel.open { transform: none; }
+  #shop-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px; border-bottom: 2px solid rgba(255,201,58,.4);
+  }
+  #shop-title { font-size: 21px; font-weight: 900; color: #ffe14d; text-shadow: 0 2px 0 #8a6200; }
+  #shop-money { font-size: 17px; font-weight: 800; color: #7dffb0; font-variant-numeric: tabular-nums; }
+  #shop-close {
+    font-size: 20px; font-weight: 800; color: #fff; background: rgba(255,255,255,.12);
+    border: 1px solid rgba(255,255,255,.35); border-radius: 10px; padding: 3px 12px; cursor: pointer;
+  }
+  #shop-list { flex: 1; overflow-y: auto; padding: 10px 12px 20px; }
+  #shop-list::-webkit-scrollbar { width: 8px; }
+  #shop-list::-webkit-scrollbar-thumb { background: rgba(255,160,200,.4); border-radius: 4px; }
+
+  .shop-item {
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(255,255,255,.06); border: 1.5px solid rgba(255,160,200,.35);
+    border-radius: 14px; padding: 10px 12px; margin-bottom: 9px;
+  }
+  .shop-item.equipped { border-color: #7dffb0; background: rgba(80,220,140,.12); }
+  .shop-item.secret { border-style: dashed; opacity: .85; }
+  .shop-icon { font-size: 30px; width: 42px; text-align: center; flex-shrink: 0; }
+  .shop-info { flex: 1; min-width: 0; }
+  .shop-name { font-size: 15.5px; font-weight: 800; color: #fff; }
+  .shop-stats { font-size: 12px; color: #ffd7a0; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .shop-desc { font-size: 11px; color: #b8a8d8; margin-top: 1px; }
+  .shop-action {
+    flex-shrink: 0; font-size: 13px; font-weight: 800; border-radius: 10px;
+    padding: 8px 12px; cursor: pointer; border: 2px solid #fff; color: #4a2408;
+    background: linear-gradient(180deg, #ffe9a0, #ffc93a); min-width: 92px; text-align: center;
+    font-family: inherit; line-height: 1.35;
+  }
+  .shop-action.buy { background: linear-gradient(180deg, #ffd6e8, #ff8fc0); color: #5a1030; }
+  .shop-action.equip { background: linear-gradient(180deg, #b6ffd4, #5ae090); color: #0a4a24; }
+  .shop-action:disabled { filter: grayscale(.9); opacity: .55; cursor: default; }
+  .shop-action .cost { display: block; font-size: 11.5px; }
+  .shop-item.equipped .shop-action { background: rgba(255,255,255,.15); color: #7dffb0; border-color: #7dffb0; }
+
+  /* start overlay */
+  #start-overlay {
+    position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 18px;
+    background: radial-gradient(ellipse at center, rgba(60,20,80,.88), rgba(15,5,30,.96));
+    color: #fff; cursor: pointer; text-align: center; padding: 20px;
+  }
+  #start-title { font-size: clamp(28px, 5vw, 52px); font-weight: 900; color: #ff8fc0; text-shadow: 0 0 30px #ff4f8b, 0 4px 0 #8a1f4d; }
+  #start-desc { font-size: clamp(13px, 2vw, 17px); color: #e8d8ff; line-height: 2; }
+  #start-btn {
+    font-size: 22px; font-weight: 800; color: #5a1030;
+    background: linear-gradient(180deg, #ffd6e8, #ff8fc0);
+    border: 3px solid #fff; border-radius: 40px; padding: 14px 46px;
+    box-shadow: 0 6px 0 #b0446e, 0 10px 24px rgba(255,80,140,.5); cursor: pointer;
+    animation: btn-bounce 1.4s ease-in-out infinite;
+  }
+  @keyframes btn-bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+  #start-overlay.hidden { display: none; }
+
+  .hint { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+    color: rgba(255,255,255,.55); font-size: 13px; letter-spacing: 1px; white-space: nowrap; }
+</style>
 </head>
 <body>
-<div id="app">
-  <canvas id="scene"></canvas>
-  <div id="grain"></div>
+  <canvas id="game-canvas"></canvas>
 
-  <div class="loading" id="loading">読み込み中…</div>
+  <div id="hud">
+    <div id="score-panel">
+      <div id="score-label">SCORE</div>
+      <div id="score-value">0</div>
+      <div id="money-row">💰<span id="money-value">0</span></div>
+      <div id="level-row">
+        <div id="level-badge">Lv.1</div>
+        <div id="xp-bar"><div id="xp-fill"></div></div>
+      </div>
+      <div id="stats-row">
+        装備 <b id="stat-weapon">ハートの杖</b><br>
+        攻撃力 <b id="stat-atk">1</b>　連打速度 <b id="stat-spd">2.0</b>/秒
+      </div>
+    </div>
 
-  <!-- HUD -->
-  <div class="hud-top">
-    <div class="round-badge" id="roundBadge">ROUND 1 / 3</div>
-    <div class="turn-indicator player" id="turnIndicator">YOUR TURN</div>
-  </div>
+    <button id="shop-btn">🛒 ショップ</button>
 
-  <div id="toast"></div>
-  <div class="hint">装填時に弾の内訳をよく覚えること。アイテムはクリックで使用。<br><b>Escキー</b>でルール表示。</div>
+    <div id="combo-box">
+      <div id="combo-num">0</div>
+      <div id="combo-label">COMBO</div>
+    </div>
 
-  <div class="actions">
-    <button class="btn shoot-self" id="shootSelf">自分を撃つ</button>
-    <button class="btn shoot-dealer" id="shootDealer">ディーラーを撃つ</button>
-  </div>
+    <div id="poison-ind">☣ 毒ガス <span id="poison-time">15.0</span>s</div>
 
-  <div id="itemTip"></div>
+    <div id="levelup-banner">LEVEL UP!</div>
+    <div id="levelup-sub"></div>
 
-  <!-- Start / end overlay -->
-  <div class="overlay" id="overlay">
-    <div class="card" id="overlayCard">
-      <h1>BUCKSHOT ROULETTE</h1>
-      <p>薄暗い地下室。仮面のディーラーとの命がけの取引。<br>
-         全3ラウンド、ショットガンとアイテムを操り生き残れ。</p>
-      <button class="btn" id="startBtn">取引を始める</button>
+    <div class="hint">クリック連打（スペースキーでもOK）でしばく！　Sキーでショップ</div>
+
+    <div id="shop-panel">
+      <div id="shop-header">
+        <div id="shop-title">🛒 武器ショップ</div>
+        <div id="shop-money">💰0</div>
+        <button id="shop-close">✕</button>
+      </div>
+      <div id="shop-list"></div>
     </div>
   </div>
 
-  <!-- Adrenaline picker -->
-  <div class="overlay" id="adrOverlay" style="display:none">
-    <div class="card">
-      <h2 style="color:#ff8a8a">ADRENALINE</h2>
-      <p>相手のアイテムを1つ奪って即座に使用する。（アドレナリンは奪えない）</p>
-      <div class="item-picker" id="adrPicker"></div>
-      <button class="btn" id="adrCancel" style="margin-top:8px">キャンセル</button>
+  <div id="start-overlay">
+    <div id="start-title">おじさんピニャータ</div>
+    <div id="start-desc">
+      おじさんをたたきまくってスコアとマネーを稼げ！<br>
+      ショップで新武器を開放・購入してどんどん強くなろう。<br>
+      ハートの杖だけは無限に強化できるぞ✨
     </div>
+    <button id="start-btn">スタート！</button>
   </div>
 
-  <!-- Rules (Escで開閉) -->
-  <div class="overlay" id="rulesOverlay" style="display:none">
-    <div class="card rules-card">
-      <h2 style="color:var(--gold)">遊び方 / RULES</h2>
-
-      <div class="rules-sec">
-        <h3>目的</h3>
-        <p>全3ラウンドを勝ち抜く。<b>ディーラーの体力を0</b>にすれば次のラウンドへ。
-           <b>自分の体力が0</b>になると敗北。</p>
-      </div>
-
-      <div class="rules-sec">
-        <h3>弾（ショットガン）</h3>
-        <p>ラウンド開始時、<span class="live-c">実弾（赤い薬莢）</span>と
-           <span class="blank-c">空砲（グレーの薬莢）</span>がランダムに装填される。
-           <b>本数の内訳は見える／並び順は不明</b>。装填の数秒間でよく覚えること。</p>
-      </div>
-
-      <div class="rules-sec">
-        <h3>手番の流れ</h3>
-        <p>自分の番では、アイテムを好きなだけ使ってから発砲する。</p>
-        <ul>
-          <li><b>自分を撃つ</b> → <span class="blank-c">空砲</span>：ノーダメージ＆<b>もう一度自分の番</b>／
-              <span class="live-c">実弾</span>：体力−1で相手の番へ</li>
-          <li><b>相手を撃つ</b> → <span class="live-c">実弾</span>：相手−1／
-              <span class="blank-c">空砲</span>：ノーダメージ。どちらも相手の番へ</li>
-        </ul>
-      </div>
-
-      <div class="rules-sec">
-        <h3>アイテム（デスク上をクリックで使用・カーソルで説明）</h3>
-        <div class="rules-items">
-          <div class="ri"><span>🍺</span><div><b>ビール</b>現在の1発目を排莢（撃たずに1発捨てる）</div></div>
-          <div class="ri"><span>🚬</span><div><b>タバコ</b>体力を1回復</div></div>
-          <div class="ri"><span>🔍</span><div><b>虫メガネ</b>次の弾が実弾か空砲かを確認</div></div>
-          <div class="ri"><span>🪚</span><div><b>ノコギリ</b>次に撃つ弾のダメージを2倍（体力2のラウンドでは出ない）</div></div>
-          <div class="ri"><span>⛓️</span><div><b>手錠</b>相手の次の番を1回スキップ</div></div>
-          <div class="ri"><span>📞</span><div><b>携帯</b>未来のどれか1発の中身を知る</div></div>
-          <div class="ri"><span>💉</span><div><b>アドレナリン</b>相手のアイテムを1つ奪って即使用（アドレナリンは奪えない）</div></div>
-          <div class="ri"><span>🔄</span><div><b>インバータ</b>次の弾の実弾／空砲を反転</div></div>
-          <div class="ri"><span>💊</span><div><b>期限切れ薬</b>50%で体力+2 ／ 50%で体力−1</div></div>
-        </div>
-      </div>
-
-      <button class="btn" id="rulesClose" style="margin-top:14px">閉じる（Esc）</button>
-    </div>
-  </div>
-</div>
-
-<script type="module" src="main.js"></script>
+  <script type="module" src="main.js"></script>
 </body>
 </html>
